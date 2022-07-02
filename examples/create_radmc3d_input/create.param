@@ -1,0 +1,34 @@
+infile              /path/to/snapshot_500.hdf5   
+ChimesOutputFile    /path/to/chimes_output_file #niranjan
+species_file        /path/to/species_list.txt 
+SB99_dir            /path/to/rt-pipeline-tools/SB99_spectra 
+Multifiles          1 #niranjan
+n_cell_base         64 
+max_part_per_cell   8 
+refinement_scheme   1 
+box_size            37.2 
+centre_x 	    0.0 
+centre_y 	    0.0
+centre_z 	    0.0
+dust_model 	    DC16 
+dust_thresh 	    1.0e6 
+b_turb 		    7.1 
+include_H_level_pop 1 
+unit_density 	    6.771194847794874e-22 
+unit_time_Myr       977.8943899409334 
+cosmo_flag          0
+use_eqm_abundances  1 
+adaptive_domain_decomposition   1 
+automatic_domain_decomposition  0
+initial_domain_spacing          1 
+N_chunk_x           6 
+N_chunk_y           6
+N_chunk_z           4
+include_stars       1
+N_age_bins          9 
+N_age_bins_refine   9
+smooth_stars        1 
+star_hsml_file      /path/to/star_hsml.hdf5
+max_star_hsml       0.1 
+max_velocity        -1.0 
+verbose_log_files   0 

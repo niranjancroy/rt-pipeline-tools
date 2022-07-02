@@ -1,0 +1,1 @@
+The atomic data in this directory were obtained from version 7.1 of the CHIANTI database (Dere et al. 1997, A&AS, 125, 149; Landi et al. 2013, ApJ, 763, 86; https://www.chiantidatabase.org) and from the LAMDA database (Schoier et al. 2005, A&A, 432, 369; https://home.strw.leidenuniv.nl/~moldata). 
