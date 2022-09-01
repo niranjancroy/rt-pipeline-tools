@@ -54,7 +54,9 @@ parameters = {"infile" : None,              # Input snapshot file
               "max_velocity" : -1.0,        # If positive, limit the maximum velocities of gas particles to be no greater than this value in x, y and z (in code units).
               "verbose_log_files" : 0,      # Set to 1 to write out log files from each MPI task. 
               "ChimesOutputFile" : None,    #niranjan: when Chimes data is not abailable with the simulation
-              "Multifiles" : 1 }              #niranjan: In case of FIRE like simulations with multifile snapshots}
+              "Multifiles" : 1 ,              #niranjan: In case of FIRE like simulations with multifile snapshots}
+              "Rotate_to_faceon" : 0 }    #niranjan: If the face on version of galaxy is wanted
+
 # Defines the stellar age bins, as used with CHIMES. 
 # Note that we have also included >1 Gyr as an 
 # additional age bin. 
@@ -943,6 +945,19 @@ def read_restart_kernel(task_id, N, N_star):
     return output_list 
 
 
+#nrianjan: Introducing rotation matrix to have a perfect face on view of the galaxy 
+def rotation_matrix(axis, theta):
+    axis = np.asarray(axis)
+    theta = np.asarray(theta)
+    axis = axis/np.sqrt(np.dot(axis, axis))
+    a = np.cos(theta/2.0)
+    b, c, d = -axis*np.sin(theta/2.0)
+    aa, bb, cc, dd = a*a, b*b, c*c, d*d
+    bc, ad, ac, ab, bd, cd = b*c, a*d, a*c, a*b, b*d, c*d
+    return np.array([[aa+bb-cc-dd, 2*(bc+ad), 2*(bd-ac)],
+                    [2*(bc-ad), aa+cc-bb-dd, 2*(cd+ab)],
+                    [2*(bd+ac), 2*(cd-ab), aa+dd-bb-cc]])
+
 
 
 
@@ -1328,20 +1343,23 @@ def main():
                 center /= 3.0857e21
                 particle_coords -= center
                 particle_star_coords -= center
-                
+               
 
-                print('MIN AND MAX particle_coords after shift = {},{}'.format(np.min(particle_coords_cm), np.max(particle_coords_cm))) 
+                print('MIN AND MAX particle_coords after shift = {},{}'.format(np.min(particle_coords), np.max(particle_coords))) 
                 
           
                 #creating mask for gas particles
                 R_gas = np.sqrt((particle_coords_cm * particle_coords_cm).sum(axis=1))
                 print('MIN AND MAX R_GAS = {},{}'.format(np.min(R_gas), np.max(R_gas)))
                 gas_mask = R_gas < radius
+                R_gas = R_gas[gas_mask]
+
            
                 #creating mask for star particles
                 R_star = np.sqrt((particle_star_coords_cm * particle_star_coords_cm).sum(axis=1))
                 print('MIN AND MAX R_STAR = {},{}'.format(np.min(R_star), np.max(R_star)))
                 star_mask = R_star < radius
+                R_star = R_star[star_mask]
 
                 print("NUMBER OF NON-ZERO ELEMENTS IN STAR_MASK IS = {}".format(np.count_nonzero(star_mask.astype(int))))
                 print("NUMBER OF NON-ZERO ELEMENTS IN GAS_MASK IS = {}".format(np.count_nonzero(gas_mask.astype(int))))
@@ -1363,7 +1381,21 @@ def main():
 
                 print("SHAPE OF PARTICLE_STAR_COORDS IS = {}".format(np.shape(particle_star_coords)))
                 ChimesOutput.close()
+           
+            if (parameters["Rotate_to_faceon"] == 1):
+                #Starting the rotation of coordinates and velocities to make the galaxy face on:
+                zaxis = np.array([0.,0.,1.])
+                L_gas = np.zeros(3)
+                L_gas = np.sum(np.cross(particle_coords[:,:],particle_velocity[:,:])*particle_mass[:,np.newaxis],axis=0)
+                L_dir = L_gas/np.linalg.norm(L_gas)  
 
+                rotax = np.cross(L_dir,zaxis)
+                rotangle = np.arccos(np.dot(L_dir,zaxis))
+                rotmatrix = rotation_matrix(rotax,rotangle)   
+
+                particle_coords = np.tensordot(rotmatrix, particle_coords, axes=(1,1)).T
+                particle_velocity = np.tensordot(rotmatrix, particle_velocity, axes=(1,1)).T
+                particle_star_coords = np.tensordot(rotmatrix, particle_star_coords, axes=(1,1)).T            
 
 
         if os.path.exists("restart_domain_%d" % (rank, )): 
