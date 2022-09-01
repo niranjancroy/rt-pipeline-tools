@@ -1,12 +1,14 @@
-infile              /mnt/sdceph/users/dangles/FIRE/bhfeedback/h113_HR_sn152/nof_s8e1_n128/snapdir_252   
-ChimesOutputFile    /mnt/home/nroy/rt-pipeline-tools/out_z2_radius_0p05kpc_Sobolev_TREE.hdf5 #niranjan
+#infile              /mnt/sdceph/users/dangles/FIRE/bhfeedback/h113_HR_sn152/nof_s8e1_n128/snapdir_252   
+infile              /mnt/home/nroy/fire2/public_release/core_FIRE-2_runs/m12i_res7100/output/snapdir_600
+ChimesOutputFile    /mnt/home/nroy/rt-pipeline-tools/out_z0_radius_200pc_Sobolev_m12i_res7100.hdf5 #niranjan
 species_file        /mnt/home/nroy/rt-pipeline-tools/species_list.txt 
 SB99_dir            /mnt/home/nroy/rt-pipeline-tools/SB99_spectra 
 Multifiles          1 #niranjan
+Rotate_to_faceon    1 #niranjan
 n_cell_base         64 
 max_part_per_cell   8 
 refinement_scheme   1 
-box_size            37.2 
+box_size            0.4 #37.2 #kpc 
 centre_x 	    0.0 
 centre_y 	    0.0
 centre_z 	    0.0
