@@ -55,7 +55,8 @@ parameters = {"infile" : None,              # Input snapshot file
               "verbose_log_files" : 0,      # Set to 1 to write out log files from each MPI task. 
               "ChimesOutputFile" : None,    #niranjan: when Chimes data is not abailable with the simulation
               "Multifiles" : 1 ,              #niranjan: In case of FIRE like simulations with multifile snapshots}
-              "Rotate_to_faceon" : 0 }    #niranjan: If the face on version of galaxy is wanted
+              "Rotate_to_faceon" : 0,     #niranjan: If the face on version of galaxy is wanted
+              "Subtract_CoMvelocity" : 1 } #niranjan: If want to subtract velocity of the center of mass of the galaxy
 
 # Defines the stellar age bins, as used with CHIMES. 
 # Note that we have also included >1 Gyr as an 
@@ -1168,6 +1169,8 @@ def main():
             #particle_velocity = np.float64(h5file.root.PartType0.Velocities.read())  # km s^-1 
             particle_velocity = np.float64(load_from_snapshot( 'Velocities', 0, input_dir, snapnum)) #km/s
 
+            particle_star_velocity = np.float64(load_from_snapshot( 'Velocities', 4, input_dir, snapnum)) #km/s
+
             try:
                 ChimesOutput = tables.openFile(parameters["ChimesOutputFile"], "r")
             except AttributeError:
@@ -1185,8 +1188,7 @@ def main():
 
 
             center = np.float64(ChimesOutput.root.Center.read())
-            filtering_radius_cm = np.float64(ChimesOutput.root.FilteringRadiusCm.read())
-          
+            filtering_radius_cm = np.float64(ChimesOutput.root.FilteringRadiusCm.read())    
 
             #particle_u = np.float64(h5file.root.PartType0.InternalEnergy.read() * 1.0e10)  # cgs 
             particle_u = np.float64(load_from_snapshot( 'InternalEnergy', 0, input_dir, snapnum)) * 1.0e10 #cgs
@@ -1331,6 +1333,7 @@ def main():
            
                 radius = filtering_radius_cm #/ 3.0857e21  #converting radius to kpc from cm
                 #center /= 3.0857e21  #converting center to kpc units
+                CM_vel_filtering_radius = 3.086e+21 #cm 
 
                 print('RADIUS AND CENTER ARE {}, AND {}'.format(radius, center))      
                 particle_coords_cm = particle_coords * 3.0857e21
@@ -1352,21 +1355,34 @@ def main():
                 R_gas = np.sqrt((particle_coords_cm * particle_coords_cm).sum(axis=1))
                 print('MIN AND MAX R_GAS = {},{}'.format(np.min(R_gas), np.max(R_gas)))
                 gas_mask = R_gas < radius
-                R_gas = R_gas[gas_mask]
+                #R_gas = R_gas[gas_mask]
 
-           
+                
                 #creating mask for star particles
                 R_star = np.sqrt((particle_star_coords_cm * particle_star_coords_cm).sum(axis=1))
                 print('MIN AND MAX R_STAR = {},{}'.format(np.min(R_star), np.max(R_star)))
                 star_mask = R_star < radius
-                R_star = R_star[star_mask]
+                #R_star = R_star[star_mask]
+
+                if (parameters["Subtract_CoMvelocity"]):
+                    #calculating the velocity of Center of Mass using the vel of stars within 1 kpc
+                    CM_vel_calc_mask = R_star < CM_vel_filtering_radius
+                    particle_star_velocity_CM_calc = particle_star_velocity[CM_vel_calc_mask, :]
+                    
+                    vel_CM_x = (np.sum(particle_star_velocity_CM_calc[:,0] * particle_star_mass[CM_vel_calc_mask]))/(np.sum(particle_star_mass[CM_vel_calc_mask]))
+                    vel_CM_y = (np.sum(particle_star_velocity_CM_calc[:,1] * particle_star_mass[CM_vel_calc_mask]))/(np.sum(particle_star_mass[CM_vel_calc_mask]))
+                    vel_CM_z = (np.sum(particle_star_velocity_CM_calc[:,2] * particle_star_mass[CM_vel_calc_mask]))/(np.sum(particle_star_mass[CM_vel_calc_mask]))
+                    vel_CM = np.array([vel_CM_x, vel_CM_y, vel_CM_z], dtype = float)
 
                 print("NUMBER OF NON-ZERO ELEMENTS IN STAR_MASK IS = {}".format(np.count_nonzero(star_mask.astype(int))))
                 print("NUMBER OF NON-ZERO ELEMENTS IN GAS_MASK IS = {}".format(np.count_nonzero(gas_mask.astype(int))))
                 particle_coords = particle_coords[gas_mask,:]
                 particle_hsml = particle_hsml[gas_mask]
                 particle_mass = particle_mass[gas_mask]
-                particle_velocity = particle_velocity[gas_mask,:]
+                if (parameters["Subtract_CoMvelocity"]):
+                    particle_velocity = particle_velocity[gas_mask,:] - vel_CM #niranjan: subtracting the velocity of center of mass from all gas velocities
+                else:
+                    particle_velocity = particle_velocity[gas_mask,:]
                 particle_u = particle_u[gas_mask]
                 particle_mu = particle_mu[gas_mask]
                 particle_Z = particle_Z[gas_mask,:]
