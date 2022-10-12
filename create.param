@@ -5,6 +5,7 @@ species_file        /mnt/home/nroy/rt-pipeline-tools/species_list.txt
 SB99_dir            /mnt/home/nroy/rt-pipeline-tools/SB99_spectra 
 Multifiles          1 #niranjan
 Rotate_to_faceon    1 #niranjan
+Subtract_CoMvelocity 1 #niranjan
 n_cell_base         64 
 max_part_per_cell   8 
 refinement_scheme   1 
