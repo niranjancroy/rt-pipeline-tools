@@ -168,11 +168,25 @@ def radmc3d_write(proc, n_wvl):
     # data to stdout. We now need 
     # to read this data from the 
     # stdout pipe and store it. 
+
+    # The first few lines will be 
+    # general header information 
+    # and the wavelengths. 
     output_array_header = [] 
-    for idx in range(4 + n_wvl): 
+    while (len(output_array_header) < 4 + n_wvl): 
         line = proc.stdout.readline() 
+
+        if line[0] == "N" or line[1] == "N": 
+            # In version 2.0 of Radmc-3D the first 
+            # two lines of stdout give the number 
+            # of processors and number of threads. 
+            # We want to skip these lines. 
+            continue 
+    
         output_array_header.append(line) 
 
+    # Now read the pixel values for 
+    # each wavelength bin. 
     output_array_data = [] 
     for idx_wvl in range(n_wvl): 
         extra_line = proc.stdout.readline() 
