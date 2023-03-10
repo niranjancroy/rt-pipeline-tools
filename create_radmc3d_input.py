@@ -139,6 +139,20 @@ def write_task_log(task_no, message):
 
     return 
 
+def hubble_z(redshift, h=0.702, Omega0=0.272, OmegaLambda=0.728): #niranjan: from daa_python library
+
+   # return Hubble factor in 1/sec for a given redshift
+   HUBBLE = 3.2407789e-18 #in h/sec
+   ascale = 1. / ( 1. + redshift )
+   hubble_a = HUBBLE * h * np.sqrt( Omega0 / ascale**3 + (1. - Omega0 - OmegaLambda) / ascale**2 + OmegaLambda )     # in 1/sec !!
+
+   return hubble_a
+
+
+
+
+
+
 class node(): 
     def __init__(self, parent_node, N_species, emitter_flag_list, atomic_mass_list): 
         if parent_node == 0: 
@@ -1352,21 +1366,25 @@ def main():
                 
           
                 #creating mask for gas particles
-                R_gas = np.sqrt((particle_coords_cm * particle_coords_cm).sum(axis=1))
-                print('MIN AND MAX R_GAS = {},{}'.format(np.min(R_gas), np.max(R_gas)))
-                gas_mask = R_gas < radius
-                #R_gas = R_gas[gas_mask]
+                R_gas_cm = np.sqrt((particle_coords_cm * particle_coords_cm).sum(axis=1))
+                print('MIN AND MAX R_GAS = {},{}'.format(np.min(R_gas_cm), np.max(R_gas_cm)))
+                gas_mask = R_gas_cm < radius
+
+                R_gas = np.sqrt((particle_coords * particle_coords).sum(axis=1)) #kpc
+                R_gas = R_gas[gas_mask]
 
                 
                 #creating mask for star particles
-                R_star = np.sqrt((particle_star_coords_cm * particle_star_coords_cm).sum(axis=1))
-                print('MIN AND MAX R_STAR = {},{}'.format(np.min(R_star), np.max(R_star)))
-                star_mask = R_star < radius
-                #R_star = R_star[star_mask]
+                R_star_cm = np.sqrt((particle_star_coords_cm * particle_star_coords_cm).sum(axis=1))
+                print('MIN AND MAX R_STAR = {},{}'.format(np.min(R_star_cm), np.max(R_star_cm)))
+                star_mask = R_star_cm < radius
+
+                R_star = np.sqrt((particle_star_coords * particle_star_coords).sum(axis=1)) 
+                R_star = R_star[star_mask]
 
                 if (parameters["Subtract_CoMvelocity"]):
                     #calculating the velocity of Center of Mass using the vel of stars within 1 kpc
-                    CM_vel_calc_mask = R_star < CM_vel_filtering_radius
+                    CM_vel_calc_mask = R_star_cm < CM_vel_filtering_radius
                     particle_star_velocity_CM_calc = particle_star_velocity[CM_vel_calc_mask, :]
                     
                     vel_CM_x = (np.sum(particle_star_velocity_CM_calc[:,0] * particle_star_mass[CM_vel_calc_mask]))/(np.sum(particle_star_mass[CM_vel_calc_mask]))
@@ -1380,7 +1398,16 @@ def main():
                 particle_hsml = particle_hsml[gas_mask]
                 particle_mass = particle_mass[gas_mask]
                 if (parameters["Subtract_CoMvelocity"]):
-                    particle_velocity = particle_velocity[gas_mask,:] - vel_CM #niranjan: subtracting the velocity of center of mass from all gas velocities
+                    z_redshift = load_from_snapshot('Redshift',-1,input_dir,snapnum)
+                    hubble_factor = hubble_z( z_redshift )
+                    print('Shape of \'hubble_factor\' = {}'.format(np.shape(hubble_factor)))
+                    print('Shape of \'particle_velocity[gas_mask,:]\' = {}'.format(np.shape(particle_velocity[gas_mask,:])))
+                    print('Shape of \'R_gas\' = {}'.format(np.shape(R_gas)))
+                    print('Shape of \'vel_CM\' = {}'.format(np.shape(vel_CM)))
+
+                    kpc_to_km = 3.0857E+16
+                    particle_velocity = particle_velocity[gas_mask,:] - vel_CM + (hubble_factor * particle_coords * kpc_to_km) #niranjan: subtracting the velocity of center of mass from all gas velocities, also adding Hubble flow correction.
+                    print("MAX AND MIN HUBBLE FLOW CORRECTION = {} and {} km/s".format(np.max(hubble_factor * particle_coords * kpc_to_km), np.min(hubble_factor * particle_coords * kpc_to_km)))
                 else:
                     particle_velocity = particle_velocity[gas_mask,:]
                 particle_u = particle_u[gas_mask]
