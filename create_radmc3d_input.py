@@ -4,7 +4,8 @@ import sys
 import struct 
 import os
 
-sys.path.append('/mnt/home/nroy/rt-pipeline-tools')
+#sys.path.append('/mnt/home/nroy/rt-pipeline-tools')
+sys.path.append('~/galaxy-mock-obs-pipeline/rt-pipeline-tools')
 
 from mpi4py import MPI 
 import read_chimes as rc 
@@ -26,7 +27,7 @@ parameters = {"infile" : None,              # Input snapshot file
               "n_cell_base" : 16,           # size of base grid (in x, y and z) 
               "max_part_per_cell" : 8,      # Max number of particles in a cell 
               "refinement_scheme" : 0,      # 0 - Refine on gas; 1 - refine on gas + stars 
-              "box_size" : 1.0,             # Total size of the AMR grid, in code units 
+             # "box_size" : 1.0,             # Total size of the AMR grid, in code units 
               "centre_x" : 0.0,             # Position of the centre in the x direction 
               "centre_y" : 0.0,             # Position of the centre in the y direction 
               "centre_z" : 0.0,             # Position of the centre in the z direction 
@@ -1003,10 +1004,27 @@ def main():
         print("Saturated dust to gas ratio: %.4e" % (dust_to_gas_saturated, )) 
         sys.stdout.flush() 
 
+
+
+    ####niranjan: directly applying the Chimes filtering diameter as the boxsize to avoid manually putting by hand
+    try:
+        ChimesOutput = tables.openFile(parameters["ChimesOutputFile"], "r")
+    except AttributeError:
+        ChimesOutput = tables.open_file(parameters["ChimesOutputFile"], "r")
+
+    filtering_radius_cm = np.float64(ChimesOutput.root.FilteringRadiusCm.read())
+    radius_kpc = filtering_radius_cm / 3.0857e21  #converting radius to kpc from cm 
+    box_size = 2 * radius_kpc
+    #####
+
     # Determine coordinates of the base grid 
     # relative to the centre of the box. 
-    delta_grid = parameters["box_size"] / parameters["n_cell_base"] 
-    grid_array = np.arange(-parameters["box_size"] / 2.0, parameters["box_size"] / 2.0, delta_grid) 
+    #delta_grid = parameters["box_size"] / parameters["n_cell_base"] 
+    delta_grid = box_size / parameters["n_cell_base"] #niranjan 
+
+    #grid_array = np.arange(-parameters["box_size"] / 2.0, parameters["box_size"] / 2.0, delta_grid) 
+    grid_array = np.arange(-box_size / 2.0, box_size / 2.0, delta_grid) #niranjan
+
     grid_array += delta_grid / 2.0     # position on centre of each cell 
 
     assert len(grid_array) == parameters["n_cell_base"] 
@@ -1185,10 +1203,12 @@ def main():
 
             particle_star_velocity = np.float64(load_from_snapshot( 'Velocities', 4, input_dir, snapnum)) #km/s
 
-            try:
-                ChimesOutput = tables.openFile(parameters["ChimesOutputFile"], "r")
-            except AttributeError:
-                ChimesOutput = tables.open_file(parameters["ChimesOutputFile"], "r")
+
+            #niranjan: commenting this section out as it's already been applied in the main function
+           # try:
+           #     ChimesOutput = tables.openFile(parameters["ChimesOutputFile"], "r")
+           # except AttributeError:
+           #     ChimesOutput = tables.open_file(parameters["ChimesOutputFile"], "r")
 
 
             if parameters["use_eqm_abundances"] == 1:
@@ -1202,7 +1222,7 @@ def main():
 
 
             center = np.float64(ChimesOutput.root.Center.read())
-            filtering_radius_cm = np.float64(ChimesOutput.root.FilteringRadiusCm.read())    
+            #filtering_radius_cm = np.float64(ChimesOutput.root.FilteringRadiusCm.read())    
 
             #particle_u = np.float64(h5file.root.PartType0.InternalEnergy.read() * 1.0e10)  # cgs 
             particle_u = np.float64(load_from_snapshot( 'InternalEnergy', 0, input_dir, snapnum)) * 1.0e10 #cgs
@@ -1345,11 +1365,12 @@ def main():
 
                 #Filtering all data based on filtering_radius
            
-                radius = filtering_radius_cm #/ 3.0857e21  #converting radius to kpc from cm
+                #radius_kpc = filtering_radius_cm / 3.0857e21  #converting radius to kpc from cm #niranjan/Nov'23: applied in main func
+                #box_size = 2 * radius_kpc                     #niranjan Nov 2023: applied above
                 #center /= 3.0857e21  #converting center to kpc units
-                CM_vel_filtering_radius = 3.086e+21 #cm 
+                CM_vel_filtering_radius = filtering_radius_cm #3.086e+21 #cm 
 
-                print('RADIUS AND CENTER ARE {}, AND {}'.format(radius, center))      
+                print('RADIUS AND CENTER ARE {} cm, AND {}cm'.format(filtering_radius_cm, center))      
                 particle_coords_cm = particle_coords * 3.0857e21
                 particle_star_coords_cm = particle_star_coords * 3.0857e21
      
@@ -1362,13 +1383,13 @@ def main():
                 particle_star_coords -= center
                
 
-                print('MIN AND MAX particle_coords after shift = {},{}'.format(np.min(particle_coords), np.max(particle_coords))) 
+                #print('MIN AND MAX particle_coords after shift = {},{}'.format(np.min(particle_coords), np.max(particle_coords))) 
                 
           
                 #creating mask for gas particles
                 R_gas_cm = np.sqrt((particle_coords_cm * particle_coords_cm).sum(axis=1))
-                print('MIN AND MAX R_GAS = {},{}'.format(np.min(R_gas_cm), np.max(R_gas_cm)))
-                gas_mask = R_gas_cm < radius
+                #print('MIN AND MAX R_GAS = {},{}'.format(np.min(R_gas_cm), np.max(R_gas_cm)))
+                gas_mask = R_gas_cm < filtering_radius_cm
 
                 R_gas = np.sqrt((particle_coords * particle_coords).sum(axis=1)) #kpc
                 R_gas = R_gas[gas_mask]
@@ -1376,8 +1397,8 @@ def main():
                 
                 #creating mask for star particles
                 R_star_cm = np.sqrt((particle_star_coords_cm * particle_star_coords_cm).sum(axis=1))
-                print('MIN AND MAX R_STAR = {},{}'.format(np.min(R_star_cm), np.max(R_star_cm)))
-                star_mask = R_star_cm < radius
+                #print('MIN AND MAX R_STAR = {},{}'.format(np.min(R_star_cm), np.max(R_star_cm)))
+                star_mask = R_star_cm < filtering_radius_cm
 
                 R_star = np.sqrt((particle_star_coords * particle_star_coords).sum(axis=1)) 
                 R_star = R_star[star_mask]
@@ -1407,7 +1428,8 @@ def main():
 
                     kpc_to_km = 3.0857E+16
                     particle_velocity = particle_velocity[gas_mask,:] - vel_CM + (hubble_factor * particle_coords * kpc_to_km) #niranjan: subtracting the velocity of center of mass from all gas velocities, also adding Hubble flow correction.
-                    print("MAX AND MIN HUBBLE FLOW CORRECTION = {} and {} km/s".format(np.max(hubble_factor * particle_coords * kpc_to_km), np.min(hubble_factor * particle_coords * kpc_to_km)))
+                    #print("MAX AND MIN HUBBLE FLOW CORRECTION = {} and {} km/s".format(np.max(hubble_factor * particle_coords * kpc_to_km), np.min(hubble_factor * particle_coords * kpc_to_km)))
+                    print('Center of mass velocity subtracted and Hubble flow correction applied')
                 else:
                     particle_velocity = particle_velocity[gas_mask,:]
                 particle_u = particle_u[gas_mask]
@@ -2584,8 +2606,9 @@ def main():
                     amr_nodes_task[i, j, k].pos[0] = parameters["centre_x"] + grid_array[i + x_ind_low_task[rank]] 
                     amr_nodes_task[i, j, k].pos[1] = parameters["centre_y"] + grid_array[j + y_ind_low_task[rank]] 
                     amr_nodes_task[i, j, k].pos[2] = parameters["centre_z"] + grid_array[k + z_ind_low_task[rank]] 
-                    amr_nodes_task[i, j, k].width = parameters["box_size"] / parameters["n_cell_base"]
-
+                    #amr_nodes_task[i, j, k].width = parameters["box_size"] / parameters["n_cell_base"]
+                    amr_nodes_task[i, j, k].width = box_size / parameters["n_cell_base"] #niranjan: directly applying filtering radius from CHIMES in RIC instead of putting in parameter file by hand
+                      
                     if parameters["refinement_scheme"] == 0: 
                         part_ind, part_ind_star = amr_nodes_task[i, j, k].find_particles(particle_coords_task, None) 
                         amr_nodes_task[i, j, k].split_cells(particle_coords_task[part_ind, :], None) 
