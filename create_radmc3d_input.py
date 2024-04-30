@@ -178,7 +178,17 @@ class node():
  
         # Ion-weighted temperatures 
         self.temperature_species = np.zeros(N_species, dtype = np.float64) 
- 
+
+        #nHtot --> overall gas density, not specific to any species #niranjan
+        self.nHtot = 0.0
+
+        #temperature --> overall gas temperature, not specific to any species #niranjan
+        self.temperature = 0.0
+
+        #mass --> gas mass in cells, #niranjan
+        self.mass = 0.0
+
+
         # Ion-weighted nH
         self.nH_species = np.zeros(N_species, dtype = np.float64) 
 
@@ -243,7 +253,7 @@ class node():
             for idx in range(self.N_species): 
                 buf = struct.pack("6f", self.species[idx], 
                                   self.temperature_species[idx], 
-                                  self.nH_species[idx], 
+                                  self.nH_species[idx],
                                   self.velocity_species[idx, 0], 
                                   self.velocity_species[idx, 1], 
                                   self.velocity_species[idx, 2])
@@ -251,6 +261,12 @@ class node():
             
             buf = struct.pack("f", self.rho_dust) 
             fd.write(buf) 
+
+         #   buf = struct.pack("f", self.nHtot) #niranjan: writing global density
+         #   fd.write(buf)
+
+         #   buf = struct.pack("f", self.temperature) #niranjan: writing global density
+         #   fd.write(buf)
 
             for idx in range(parameters["N_age_bins"]): 
                 buf = struct.pack("f", self.rho_star[idx]) 
@@ -272,11 +288,11 @@ class node():
     def read_restart_densities(self, fd): 
         if self.leaf == 1: 
             for idx in range(self.N_species): 
-                buf = fd.read(6 * 4) 
+                buf = fd.read(7 * 4) 
                 data = struct.unpack("6f", buf) 
                 self.species[idx] = data[0] 
                 self.temperature_species[idx] = data[1] 
-                self.nH_species[idx] = data[2] 
+                self.nH_species[idx] = data[2]
                 self.velocity_species[idx, 0] = data[3] 
                 self.velocity_species[idx, 1] = data[4] 
                 self.velocity_species[idx, 2] = data[5] 
@@ -284,7 +300,18 @@ class node():
             buf = fd.read(4) 
             data = struct.unpack("f", buf) 
             self.rho_dust = data[0] 
-            
+           
+            #buf = fd.read(4) #niranjan
+            #data = struct.unpack("f", buf)
+            #self.nHtot = data[0]
+
+
+            #buf = fd.read(4) #niranjan
+            #data = struct.unpack("f", buf)
+            #self.temperature = data[0]
+
+
+
             for idx in range(parameters["N_age_bins"]): 
                 buf = fd.read(4) 
                 data = struct.unpack("f", buf) 
@@ -338,7 +365,8 @@ class node():
                                particle_temperature, 
                                particle_velocity, 
                                particle_metallicity, 
-                               particle_nH, 
+                               particle_nH,
+                               particle_nHtot, #niranjan 2024
                                sum_wk): 
         # Performs an SPH interpolation of gas densities onto the 
         # centre of this cell. 
@@ -365,7 +393,8 @@ class node():
             T_smooth = particle_temperature[ind_smooth] 
             vel_smooth = particle_velocity[ind_smooth] 
             Z_smooth = particle_metallicity[ind_smooth] 
-            nH_smooth = particle_nH[ind_smooth] 
+            nH_smooth = particle_nH[ind_smooth]
+            nHtot_smooth = particle_nHtot[ind_smooth] #niranjan 2024
             
             ind_r = (radii < 1.0) 
             radii_r = radii[ind_r]
@@ -377,6 +406,7 @@ class node():
             vel_r = vel_smooth[ind_r]
             Z_r = Z_smooth[ind_r]
             nH_r = nH_smooth[ind_r]
+            nHtot_r = nHtot_smooth[ind_r] #niranjan 2024
 
             wk = np.zeros(len(mass_r), dtype = np.float64) 
             ind_low = (radii_r < 0.5) 
@@ -387,6 +417,19 @@ class node():
             self.species += np.sum(species_r.transpose() * wk / sum_wk_r, axis = 1)   # Msol 
             self.temperature_species += np.sum(species_r.transpose() * T_r * wk / sum_wk_r, axis = 1)  
             self.nH_species += np.sum(species_r.transpose() * nH_r * wk / sum_wk_r, axis = 1)
+
+            self.mass += np.sum(mass_r *  wk / sum_wk_r) #niranjan
+            #self.nHtot += np.sum(nHtot_r * wk / sum_wk_r) #niranjan
+            self.temperature +=  np.sum(mass_r * T_r * wk / sum_wk_r) #niranjan
+            #self.temperature +=  np.sum(T_r * wk / sum_wk_r) #niranjan: removing mass weight for testing purposes
+            self.temperature /= self.mass #niranjan
+
+            msun_cgs = 1.988409870698051e+33
+            kpc_cgs  = 3.0856775814913673e+21
+            protonmass_cgs = 1.67262192369e-24
+
+            self.nHtot = self.mass * (msun_cgs / kpc_cgs**3 / protonmass_cgs)/ (self.width ** 3.0) #cm^-3 #niranajn: dividing mass by volume to get density nH
+            
 
             self.velocity_species[:, 0] +=  np.sum(species_r.transpose() * vel_r[:, 0] * wk / sum_wk_r, axis = 1)
             self.velocity_species[:, 1] +=  np.sum(species_r.transpose() * vel_r[:, 1] * wk / sum_wk_r, axis = 1)
@@ -430,6 +473,7 @@ class node():
                                                                             particle_velocity[ind_smooth], 
                                                                             particle_metallicity[ind_smooth], 
                                                                             particle_nH[ind_smooth], 
+                                                                            particle_nHtot[ind_smooth], #niranjan 2024
                                                                             sum_wk[ind_smooth])
 
     def compute_cell_stellar_densities(self, particle_star_coords, particle_star_mass, age_index): 
@@ -712,7 +756,7 @@ class node():
                     for i in range(2): 
                         self.daughter_nodes[i, j, k].compute_H_level_populations(elec_index, HI_index, HII_index) 
             
-    def walk_cells(self, species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file): 
+    def walk_cells(self, species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file): #niranjan: adding nHtot_file, temperature_file
         if self.leaf == 1: 
             emitter_index = 0 
 
@@ -743,13 +787,30 @@ class node():
             turb_file.write(buf)
             turb_file.flush()
 
-            vol_file.write("%.6e \n" % (self.width ** 3.0, ))  # kpc^3 
-            vol_file.flush() 
+            #vol_file.write("%.6e \n" % (self.width ** 3.0, ))  # kpc^3 
+            #vol_file.flush()
+
+            #nirnjan: adding overall cell density as a binary file
+            buf = struct.pack("d", self.nHtot)
+            nHtot_file.write(buf)
+            nHtot_file.flush()
+            #nHtot_file.write("%.6e \n" % (self.nHtot, )) #cm^-3 #niranjan 
+            #nHtot_file.flush()
+
+            vol_file.write("%.6e \n" % (self.width ** 3.0, ))  # kpc^3
+            vol_file.flush()
+
+            #niranjan: saving mass-weighted cell temperature data as binary file
+            buf = struct.pack("d", self.temperature) # K
+            temperature_file.write(buf)
+            temperature_file.flush()
+
+
         else: 
             for k in range(2): 
                 for j in range(2): 
                     for i in range(2): 
-                        self.daughter_nodes[i, j, k].walk_cells(species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file) 
+                        self.daughter_nodes[i, j, k].walk_cells(species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file) #niranjan: adding nHtot_file, temperature_file 
 
     def walk_cells_dust(self, dust_file, dust_T_file, dust_species): 
         if self.leaf == 1: 
@@ -2452,7 +2513,9 @@ def main():
                         particle_u_task = particle_u[ind_slice].copy() 
                         particle_mu_task = particle_mu[ind_slice].copy() 
                         particle_Z_task = particle_Z[ind_slice, :].copy() #niranjan 2022: adding [,:], 
-                        particle_rho_task = particle_rho[ind_slice].copy() 
+                        particle_rho_task = particle_rho[ind_slice].copy()
+                        #particle_rho_task = particle_mass[ind_slice].copy() #niranjan: replacing the deposition of density directly in grid cells to mass/volume of cells
+                        #particle_nHtot_task = particle_nHtot_task[ind_slice].copy() #niranjan 2024: adding overal gas number density 
 
                         if parameters["include_stars"] == 1: 
                             particle_star_age_task = particle_star_age[ind_slice_star].copy() 
@@ -2484,7 +2547,8 @@ def main():
         particle_u_task = np.empty(N_parts[rank], dtype = np.float64) 
         particle_mu_task = np.empty(N_parts[rank], dtype = np.float64) 
         particle_Z_task = np.empty((N_parts[rank] * 11), dtype = np.float64) 
-        particle_rho_task = np.empty(N_parts[rank], dtype = np.float64) 
+        particle_rho_task = np.empty(N_parts[rank], dtype = np.float64)
+        #particle_nHtot_task = np.empty(N_parts[rank], dtype = np.float64) #niranjan 2024
 
         if parameters["include_stars"] == 1: 
             particle_star_age_task = np.empty(N_parts_star[rank], dtype = np.float64) 
@@ -2500,7 +2564,8 @@ def main():
         comm.Recv(particle_u_task, source = 0, tag = (N_data_arrays * rank) + 5) 
         comm.Recv(particle_mu_task, source = 0, tag = (N_data_arrays * rank) + 6) 
         comm.Recv(particle_Z_task, source = 0, tag = (N_data_arrays * rank) + 7) 
-        comm.Recv(particle_rho_task, source = 0, tag = (N_data_arrays * rank) + 8) 
+        comm.Recv(particle_rho_task, source = 0, tag = (N_data_arrays * rank) + 8)
+        #comm.Recv(particle_nHtot_task, source = 0, tag = (N_data_arrays * rank) + 13) #niranjan
 
         if parameters["include_stars"] == 1: 
             comm.Recv(particle_star_age_task, source = 0, tag = (N_data_arrays * rank) + 9) 
@@ -2526,6 +2591,7 @@ def main():
     XH_task = 1.0 - (particle_Z_task[:, 0] + particle_Z_task[:, 1]) 
     particle_temperature_task = (2.0 / 3.0) * particle_mu_task * 1.67e-24 * particle_u_task / 1.38e-16  # K 
     particle_nH_task = particle_rho_task * XH_task * (parameters["unit_density"] / 1.67e-24) 
+    particle_nHtot_task = particle_rho_task * (parameters["unit_density"] / 1.67e-24) #niranjan:2024
 
     if parameters["include_stars"] == 1: 
         particle_star_age_task[(particle_star_age_task < 0.001)] = 0.001 
@@ -2940,7 +3006,8 @@ def main():
                                                                    particle_temperature_task[ind_smooth], 
                                                                    particle_velocity_task[ind_smooth], 
                                                                    particle_Z_task[ind_smooth, 0], 
-                                                                   particle_nH_task[ind_smooth], 
+                                                                   particle_nH_task[ind_smooth],
+                                                                   particle_nHtot_task[ind_smooth], #niranjan 2024
                                                                    sum_wk_task[ind_smooth]) 
                     if parameters["include_H_level_pop"] == 1:
                         amr_nodes_task[i, j, k].compute_H_level_populations(elec_index, HI_index, HII_index) 
@@ -3228,7 +3295,9 @@ def main():
             for i in range(parameters["n_cell_base"]): 
                 if grid_task[i, j, k] == rank: 
                     f_turb = open("microturbulence.binp", "ab") 
-                    f_vol = open("cell_volume_kpc3.dat", "a") 
+                    f_vol = open("cell_volume_kpc3.dat", "a")
+                    f_nHtot = open("cell_nHtot.binp", "ab") #niranjan
+                    f_temperature = open("cell_temperature.binp", "ab") #niranjan
 
                     f_species_list = [] 
                     f_T_list = [] 
@@ -3253,10 +3322,15 @@ def main():
                                                                                                                             f_nH_list, 
                                                                                                                             f_vel_list, 
                                                                                                                             f_turb, 
-                                                                                                                            f_vol) 
+                                                                                                                            f_vol,
+                                                                                                                            f_nHtot,
+                                                                                                                            f_temperature) #niranjan'23:adding f_nH, f_temperature
  
                     f_turb.close() 
-                    f_vol.close() 
+                    f_vol.close()
+                    f_nHtot.close() #niranjan
+                    f_temperature.close() #niranjan
+
                     for my_file in f_species_list: 
                         my_file.close() 
                     for my_file in f_T_list: 
@@ -3418,7 +3492,21 @@ def main():
             f_pop_Hbeta_R15_HII.write("3 \n") 
             f_pop_Hbeta_R15_HII.write("1 2 3 \n") 
             
-            f_pop_Hbeta_R15_HII.close() 
+            f_pop_Hbeta_R15_HII.close()
+
+            
+            #niranjan'24: adding the following because header was missing
+            f_pop_Hbeta_R15_HI = open("levelpop_HI_Hbeta_R15.dat", "w")
+            f_pop_Hbeta_R15_HI.write("1 \n")
+
+            line = "%d \n" % (leaf_max, )
+            f_pop_Hbeta_R15_HI.write(line)
+
+            f_pop_Hbeta_R15_HI.write("3 \n")
+            f_pop_Hbeta_R15_HI.write("1 2 3 \n")
+
+            f_pop_Hbeta_R15_HI.close()
+
 
         comm.Barrier() 
                 
