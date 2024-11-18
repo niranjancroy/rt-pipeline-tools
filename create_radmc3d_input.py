@@ -188,6 +188,10 @@ class node():
         #mass --> gas mass in cells, #niranjan
         self.mass = 0.0
 
+        #velocity --> velocity in cells, #niranjan
+        self.velocity = np.zeros((1,3), dtype = np.float)
+
+        self.momentum = np.zeros((1,3), dtype = np.float) #niranjan
 
         # Ion-weighted nH
         self.nH_species = np.zeros(N_species, dtype = np.float64) 
@@ -423,6 +427,16 @@ class node():
             self.temperature +=  np.sum(mass_r * T_r * wk / sum_wk_r) #niranjan
             #self.temperature +=  np.sum(T_r * wk / sum_wk_r) #niranjan: removing mass weight for testing purposes
             self.temperature /= self.mass #niranjan
+
+            
+            #niranjan: adding the following six lines to calculate the velocity in each cell not weighted by the different species.
+            self.momentum[:,0] += np.sum(mass_r * vel_r[:,0] * wk / sum_wk_r)
+            self.momentum[:,1] += np.sum(mass_r * vel_r[:,1] * wk / sum_wk_r)
+            self.momentum[:,2] += np.sum(mass_r * vel_r[:,2] * wk / sum_wk_r)
+
+            self.velocity[:,0] = self.momentum[:,0] / self.mass
+            self.velocity[:,1] = self.momentum[:,1] / self.mass
+            self.velocity[:,2] = self.momentum[:,2] / self.mass
 
             msun_cgs = 1.988409870698051e+33
             kpc_cgs  = 3.0856775814913673e+21
@@ -756,7 +770,7 @@ class node():
                     for i in range(2): 
                         self.daughter_nodes[i, j, k].compute_H_level_populations(elec_index, HI_index, HII_index) 
             
-    def walk_cells(self, species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file): #niranjan: adding nHtot_file, temperature_file
+    def walk_cells(self, species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file, velocity_file): #niranjan: adding nHtot_file, temperature_file, velocity file that are not weighted by the different species
         if self.leaf == 1: 
             emitter_index = 0 
 
@@ -797,6 +811,12 @@ class node():
             #nHtot_file.write("%.6e \n" % (self.nHtot, )) #cm^-3 #niranjan 
             #nHtot_file.flush()
 
+
+            #niranjan: adding velocity of the cells that's not species weighted
+            buf = struct.pack("3d", self.velocity[:,0] * 1.0e5, self.velocity[:,1] * 1.0e5, self.velocity[:,2] * 1.0e5)  # cm s^-1 
+            velocity_file.write(buf)
+            velocity_file.flush()
+
             vol_file.write("%.6e \n" % (self.width ** 3.0, ))  # kpc^3
             vol_file.flush()
 
@@ -810,7 +830,7 @@ class node():
             for k in range(2): 
                 for j in range(2): 
                     for i in range(2): 
-                        self.daughter_nodes[i, j, k].walk_cells(species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file) #niranjan: adding nHtot_file, temperature_file 
+                        self.daughter_nodes[i, j, k].walk_cells(species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file, velocity_file) #niranjan: adding nHtot_file, temperature_file 
 
     def walk_cells_dust(self, dust_file, dust_T_file, dust_species): 
         if self.leaf == 1: 
@@ -1429,7 +1449,7 @@ def main():
                 #radius_kpc = filtering_radius_cm / 3.0857e21  #converting radius to kpc from cm #niranjan/Nov'23: applied in main func
                 #box_size = 2 * radius_kpc                     #niranjan Nov 2023: applied above
                 #center /= 3.0857e21  #converting center to kpc units
-                CM_vel_filtering_radius = filtering_radius_cm #3.086e+21 #cm 
+                CM_vel_filtering_radius = 3.086e+21 #cm 
 
                 print('RADIUS AND CENTER ARE {} cm, AND {}cm'.format(filtering_radius_cm, center))      
                 particle_coords_cm = particle_coords * 3.0857e21
@@ -3298,6 +3318,7 @@ def main():
                     f_vol = open("cell_volume_kpc3.dat", "a")
                     f_nHtot = open("cell_nHtot.binp", "ab") #niranjan
                     f_temperature = open("cell_temperature.binp", "ab") #niranjan
+                    f_velocity = open("cell_velocity.binp", "ab") #niranjan
 
                     f_species_list = [] 
                     f_T_list = [] 
@@ -3324,12 +3345,14 @@ def main():
                                                                                                                             f_turb, 
                                                                                                                             f_vol,
                                                                                                                             f_nHtot,
-                                                                                                                            f_temperature) #niranjan'23:adding f_nH, f_temperature
+                                                                                                                            f_temperature,
+                                                                                                                            f_velocity) #niranjan'23:adding f_nH, f_temperature
  
                     f_turb.close() 
                     f_vol.close()
                     f_nHtot.close() #niranjan
                     f_temperature.close() #niranjan
+                    f_velocity.close() #niranjan 
 
                     for my_file in f_species_list: 
                         my_file.close() 
@@ -3492,21 +3515,19 @@ def main():
             f_pop_Hbeta_R15_HII.write("3 \n") 
             f_pop_Hbeta_R15_HII.write("1 2 3 \n") 
             
-            f_pop_Hbeta_R15_HII.close()
+            f_pop_Hbeta_R15_HII.close() 
 
-            
-            #niranjan'24: adding the following because header was missing
-            f_pop_Hbeta_R15_HI = open("levelpop_HI_Hbeta_R15.dat", "w")
-            f_pop_Hbeta_R15_HI.write("1 \n")
+            #niranjan: adding this as the HI header was missing
+            f_pop_Hbeta_R15_HI = open("levelpop_HI_Hbeta_R15.dat", "w") 
+            f_pop_Hbeta_R15_HI.write("1 \n") 
 
-            line = "%d \n" % (leaf_max, )
-            f_pop_Hbeta_R15_HI.write(line)
-
-            f_pop_Hbeta_R15_HI.write("3 \n")
-            f_pop_Hbeta_R15_HI.write("1 2 3 \n")
-
-            f_pop_Hbeta_R15_HI.close()
-
+            line = "%d \n" % (leaf_max, ) 
+            f_pop_Hbeta_R15_HI.write(line) 
+     
+            f_pop_Hbeta_R15_HI.write("3 \n") 
+            f_pop_Hbeta_R15_HI.write("1 2 3 \n") 
+     
+            f_pop_Hbeta_R15_HI.close() 
 
         comm.Barrier() 
                 
