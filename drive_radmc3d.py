@@ -28,7 +28,10 @@ parameters = {"radmc3d_exe" : None,
               "y_max" : 1200.0, 
               "npix_x" : 1024, 
               "npix_y" : 1024, 
-              "poll_interval" : 1.0} 
+              "poll_interval" : 1.0,
+              "pointpc_x": 0,
+              "pointpc_y": 0,
+              "pointpc_z": 0} 
 
 # lambda_0 in microns 
 lambda_0_dict = {"Halpha": 0.65600490570068359, 
@@ -44,7 +47,6 @@ lambda_0_dict = {"Halpha": 0.65600490570068359,
                  "OI_6300A": 0.62976968288421631, 
                  "OI_63mu": 63.141555786132812, 
                  "OI_145mu": 145.43453979492188, 
-                 "OII_3729A": 0.37272796727, #niranjan: adding this line
                  "OIII_5007A": 0.50047838687896729, 
                  "OIII_88mu": 88.295417785644531, 
                  "OIV_25mu": 25.87542724609375, 
@@ -140,18 +142,38 @@ def radmc3d_run(wvl_low, wvl_hi, n_wvl, proc, incl_lines):
     npix_y = parameters["npix_y"] 
     inclination = parameters["inclination"] 
     poll_interval = parameters["poll_interval"] 
+   
+    pointpc_x = (x_max - x_min) / 2.0 
+    pointpc_y = (x_max - x_min) / 2.0 
+    pointpc_z = (x_max - x_min) / 2.0 
+ 
+    x_extent = x_max - x_min #niranjan
+    y_extent = y_max - y_min #niranjan
+    x_min = x_min - x_extent/2 #niranjan
+    x_max = x_max - x_extent/2 #niranjan
+    y_min = y_min - y_extent/2 #niranjan
+    y_max = y_max - y_extent/2 #niranjan
+    
+    
+   # pointpc_x = (x_max - x_min) / 2.0
+   # pointpc_y = (x_max - x_min) / 2.0
+   # pointpc_z = (x_max - x_min) / 2.0
 
     if incl_lines == 1: 
-        run_command = "image\nlambdarange\n%.16f\n%.16f\nnlam\n%d\nincl\n%.4f\ndoppcatch\nzoompc\n%f\n%f\n%f\n%f\nnpixx\n%d\nnpixy\n%d\ntruepix\nenter\n" % (wvl_low, wvl_hi, n_wvl, inclination, x_min, x_max, y_min, y_max, npix_x, npix_y)
+        run_command = "image\nlambdarange\n%.16f\n%.16f\nnlam\n%d\nincl\n%.4f\npointpc\n%f\n%f\n%f\ndoppcatch\nzoompc\n%f\n%f\n%f\n%f\nnpixx\n%d\nnpixy\n%d\ntruepix\nenter\n" % (wvl_low, wvl_hi, n_wvl, inclination, pointpc_x, pointpc_y, pointpc_z, x_min, x_max, y_min, y_max, npix_x, npix_y)
+        #run_command = "image\nlambdarange\n%.16f\n%.16f\nnlam\n%d\nincl\n%.4f\ndoppcatch\nzoompc\n%f\n%f\n%f\n%f\nnpixx\n%d\nnpixy\n%d\ntruepix\nenter\n" % (wvl_low, wvl_hi, n_wvl, inclination, x_min, x_max, y_min, y_max, npix_x, npix_y)
+        #print('Run command = {}'.format(run_command))
     else: 
-        run_command = "image\nlambdarange\n%.16f\n%.16f\nnlam\n%d\nincl\n%.4f\nsecondorder\nzoompc\n%f\n%f\n%f\n%f\nnpixx\n%d\nnpixy\n%d\ntruepix\nenter\n" % (wvl_low, wvl_hi, n_wvl, inclination, x_min, x_max, y_min, y_max, npix_x, npix_y)
-    
+        run_command = "image\nlambdarange\n%.16f\n%.16f\nnlam\n%d\nincl\n%.4f\npointpc\n%f\n%f\n%f\nsecondorder\nzoompc\n%f\n%f\n%f\n%f\nnpixx\n%d\nnpixy\n%d\ntruepix\nenter\n" % (wvl_low, wvl_hi, n_wvl, inclination, pointpc_x, pointpc_y, pointpc_z, x_min, x_max, y_min, y_max, npix_x, npix_y)
+        #run_command = "image\nlambdarange\n%.16f\n%.16f\nnlam\n%d\nincl\n%.4f\nsecondorder\nzoompc\n%f\n%f\n%f\n%f\nnpixx\n%d\nnpixy\n%d\ntruepix\nenter\n" % (wvl_low, wvl_hi, n_wvl, inclination, x_min, x_max, y_min, y_max, npix_x, npix_y)
+        #print('Run command = {}'.format(run_command))
     proc.stdin.write(run_command) 
     proc.stdin.flush() 
 
     # Wait for Radmc-3d to finish 
     # running the command. 
-    while radmc3d_poll() == False: 
+    while radmc3d_poll() == False:
+        #print('poll_interval = {}\n'.format(radmc3d_poll())) 
         time.sleep(poll_interval) 
 
     return 
