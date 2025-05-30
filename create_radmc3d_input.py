@@ -57,7 +57,9 @@ parameters = {"infile" : None,              # Input snapshot file
               "ChimesOutputFile" : None,    #niranjan: when Chimes data is not abailable with the simulation
               "Multifiles" : 1 ,              #niranjan: In case of FIRE like simulations with multifile snapshots}
               "Rotate_to_faceon" : 0,     #niranjan: If the face on version of galaxy is wanted
-              "Subtract_CoMvelocity" : 1 } #niranjan: If want to subtract velocity of the center of mass of the galaxy
+              "Subtract_CoMvelocity" : 1, #niranjan: If want to subtract velocity of the center of mass of the galaxy
+              "write_global_properties" : 0} #niranjan: adding this in case we want to reduce IO time
+
 
 # Defines the stellar age bins, as used with CHIMES. 
 # Note that we have also included >1 Gyr as an 
@@ -442,7 +444,7 @@ class node():
             kpc_cgs  = 3.0856775814913673e+21
             protonmass_cgs = 1.67262192369e-24
 
-            self.nHtot = self.mass * (msun_cgs / kpc_cgs**3 / protonmass_cgs)/ (self.width ** 3.0) #cm^-3 #niranajn: dividing mass by volume to get density nH
+            self.nHtot = self.mass * (msun_cgs / kpc_cgs**3 / protonmass_cgs)/ (self.width ** 3.0) #cm^-3 #niranjan: dividing mass by volume to get density nH
             
 
             self.velocity_species[:, 0] +=  np.sum(species_r.transpose() * vel_r[:, 0] * wk / sum_wk_r, axis = 1)
@@ -770,7 +772,9 @@ class node():
                     for i in range(2): 
                         self.daughter_nodes[i, j, k].compute_H_level_populations(elec_index, HI_index, HII_index) 
             
-    def walk_cells(self, species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file, velocity_file): #niranjan: adding nHtot_file, temperature_file, velocity file that are not weighted by the different species
+
+    def walk_cells(self, species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file = None, temperature_file= None, velocity_file= None): #niranjan: adding nHtot_file, temperature_file, velocity file that are not weighted by the different species
+
         if self.leaf == 1: 
             emitter_index = 0 
 
@@ -805,32 +809,35 @@ class node():
             #vol_file.flush()
 
             #nirnjan: adding overall cell density as a binary file
-            buf = struct.pack("d", self.nHtot)
-            nHtot_file.write(buf)
-            nHtot_file.flush()
-            #nHtot_file.write("%.6e \n" % (self.nHtot, )) #cm^-3 #niranjan 
-            #nHtot_file.flush()
+            if (parameters["write_global_properties"]): #niranjan: IO could be expensive if set to 1
+                buf = struct.pack("d", self.nHtot)
+                nHtot_file.write(buf)
+                nHtot_file.flush()
+                #nHtot_file.write("%.6e \n" % (self.nHtot, )) #cm^-3 #niranjan 
+                #nHtot_file.flush()
 
 
             #niranjan: adding velocity of the cells that's not species weighted
-            buf = struct.pack("3d", self.velocity[:,0] * 1.0e5, self.velocity[:,1] * 1.0e5, self.velocity[:,2] * 1.0e5)  # cm s^-1 
-            velocity_file.write(buf)
-            velocity_file.flush()
+            if (parameters["write_global_properties"]):#niranjan: IO could be expensive if set to 1
+                buf = struct.pack("3d", self.velocity[:,0] * 1.0e5, self.velocity[:,1] * 1.0e5, self.velocity[:,2] * 1.0e5)  # cm s^-1 
+                velocity_file.write(buf)
+                velocity_file.flush()
+
 
             vol_file.write("%.6e \n" % (self.width ** 3.0, ))  # kpc^3
             vol_file.flush()
 
             #niranjan: saving mass-weighted cell temperature data as binary file
-            buf = struct.pack("d", self.temperature) # K
-            temperature_file.write(buf)
-            temperature_file.flush()
-
-
+            if (parameters["write_global_properties"]):#niranjan: IO could be expensive if set to 1
+                buf = struct.pack("d", self.temperature) # K
+                temperature_file.write(buf)
+                temperature_file.flush()
         else: 
             for k in range(2): 
                 for j in range(2): 
                     for i in range(2): 
-                        self.daughter_nodes[i, j, k].walk_cells(species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file, velocity_file) #niranjan: adding nHtot_file, temperature_file 
+                        self.daughter_nodes[i, j, k].walk_cells(species_file_list, T_file_list, nH_file_list, vel_file_list, turb_file, vol_file, nHtot_file, temperature_file, velocity_file) #niranjan: adding nHtot_file, temperature_file, velocity file 
+
 
     def walk_cells_dust(self, dust_file, dust_T_file, dust_species): 
         if self.leaf == 1: 
@@ -1451,7 +1458,7 @@ def main():
                 #center /= 3.0857e21  #converting center to kpc units
                 CM_vel_filtering_radius = 3.086e+21 #cm 
 
-                print('RADIUS AND CENTER ARE {} cm, AND {}cm'.format(filtering_radius_cm, center))      
+                print(f'Radius and center are {filtering_radius_cm} cm, and {center} cm')      
                 particle_coords_cm = particle_coords * 3.0857e21
                 particle_star_coords_cm = particle_star_coords * 3.0857e21
      
@@ -3296,6 +3303,7 @@ def main():
                 if bin_idx == 0: 
                     ind_age_bin = (log_star_age < log_stellar_age_Myr_bin_max[0])
                 else: 
+
                     ind_age_bin = ((log_star_age >= log_stellar_age_Myr_bin_max[bin_idx - 1]) & (log_star_age < log_stellar_age_Myr_bin_max[bin_idx])) 
             
                 particle_stellar_total = np.sum(particle_star_mass[ind_box][ind_age_bin]) 
@@ -3316,14 +3324,17 @@ def main():
                 if grid_task[i, j, k] == rank: 
                     f_turb = open("microturbulence.binp", "ab") 
                     f_vol = open("cell_volume_kpc3.dat", "a")
-                    f_nHtot = open("cell_nHtot.binp", "ab") #niranjan
-                    f_temperature = open("cell_temperature.binp", "ab") #niranjan
-                    f_velocity = open("cell_velocity.binp", "ab") #niranjan
+                    
+                    if (parameters["write_global_properties"]): 
+                        f_nHtot = open("cell_nHtot.binp", "ab") #niranjan
+                        f_temperature = open("cell_temperature.binp", "ab") #niranjan
+                        f_velocity = open("cell_velocity.binp", "ab") #niranjan
 
                     f_species_list = [] 
                     f_T_list = [] 
                     f_nH_list = [] 
                     f_vel_list = [] 
+
                     for species_index in range(N_species): 
                         species_filename = "numberdens_%s.binp" % (species_list[species_index], ) 
                         f_species_list.append(open(species_filename, "ab")) 
@@ -3337,22 +3348,32 @@ def main():
                             
                             vel_filename = "gas_velocity_%s.binp" % (species_list[species_index], ) 
                             f_vel_list.append(open(vel_filename, "ab")) 
+                    
 
-                    amr_nodes_task[i - x_ind_low_task[rank], j - y_ind_low_task[rank], k - z_ind_low_task[rank]].walk_cells(f_species_list, 
+                    if (parameters["write_global_properties"]):
+                        amr_nodes_task[i - x_ind_low_task[rank], j - y_ind_low_task[rank], k - z_ind_low_task[rank]].walk_cells(f_species_list, 
                                                                                                                             f_T_list, 
                                                                                                                             f_nH_list, 
                                                                                                                             f_vel_list, 
                                                                                                                             f_turb, 
                                                                                                                             f_vol,
-                                                                                                                            f_nHtot,
-                                                                                                                            f_temperature,
-                                                                                                                            f_velocity) #niranjan'23:adding f_nH, f_temperature
- 
+                                                                                                                            nHtot_file = f_nHtot,
+                                                                                                                            temperature_file = f_temperature,
+                                                                                                                            velocity_file = f_velocity) #niranjan'23:adding f_nH, f_temperature
+
+                    else:
+                       amr_nodes_task[i - x_ind_low_task[rank], j - y_ind_low_task[rank], k - z_ind_low_task[rank]].walk_cells(f_species_list,
+                                                                                                                            f_T_list,
+                                                                                                                            f_nH_list,
+                                                                                                                            f_vel_list,
+                                                                                                                            f_turb,
+                                                                                                                            f_vol)
                     f_turb.close() 
                     f_vol.close()
-                    f_nHtot.close() #niranjan
-                    f_temperature.close() #niranjan
-                    f_velocity.close() #niranjan 
+                    if (parameters["write_global_properties"]):
+                        f_nHtot.close() #niranjan
+                        f_temperature.close() #niranjan
+                        f_velocity.close() #niranjan 
 
                     for my_file in f_species_list: 
                         my_file.close() 
